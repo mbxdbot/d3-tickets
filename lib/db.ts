@@ -3,7 +3,6 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 export interface AppEnv {
   DB: D1Database;
   EMAIL_MODE?: string;
-  APP_BASE_URL?: string;
   SES_REGION?: string;
   SES_ACCESS_KEY_ID?: string;
   SES_SECRET_ACCESS_KEY?: string;

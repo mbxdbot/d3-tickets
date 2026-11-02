@@ -7,16 +7,16 @@ export async function GET() {
   const { DB } = await getEnv();
   const totals = await DB.prepare(
     `SELECT COUNT(*) AS total,
-            SUM(CASE WHEN email_status IN ('sent','mocked') THEN 1 ELSE 0 END) AS emailed,
-            SUM(CASE WHEN email_status = 'failed' THEN 1 ELSE 0 END) AS email_failed,
-            SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in
+            COALESCE(SUM(CASE WHEN email_status = 'sent' THEN 1 ELSE 0 END), 0) AS emailed,
+            COALESCE(SUM(CASE WHEN email_status = 'failed' THEN 1 ELSE 0 END), 0) AS email_failed,
+            COALESCE(SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS checked_in
      FROM participants`
   ).first();
   const perPass = await DB.prepare(
     `SELECT pt.id, pt.name, pt.color,
             COUNT(p.id) AS total,
-            SUM(CASE WHEN p.email_status IN ('sent','mocked') THEN 1 ELSE 0 END) AS emailed,
-            SUM(CASE WHEN p.checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in
+            COALESCE(SUM(CASE WHEN p.email_status = 'sent' THEN 1 ELSE 0 END), 0) AS emailed,
+            COALESCE(SUM(CASE WHEN p.checked_in_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS checked_in
      FROM pass_types pt LEFT JOIN participants p ON p.pass_type_id = pt.id
      GROUP BY pt.id ORDER BY pt.created_at ASC`
   ).all();

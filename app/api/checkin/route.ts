@@ -37,11 +37,11 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  await DB.prepare(`UPDATE participants SET checked_in_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`)
+  const update = await DB.prepare(`UPDATE participants SET checked_in_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND checked_in_at IS NULL`)
     .bind(p.id).run();
   const fresh = await DB.prepare(`${PARTICIPANT_SELECT} WHERE p.id = ?`).bind(p.id).first<ParticipantWithPass>();
   return NextResponse.json({
-    status: "ok",
+    status: update.meta.changes ? "ok" : "already",
     participant: publicView(fresh!),
     checkedInAt: fresh!.checked_in_at,
     embeddedPass,

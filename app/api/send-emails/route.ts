@@ -8,19 +8,25 @@ export async function POST(req: NextRequest) {
   const env = await getEnv();
   const { DB } = env;
   let resend = false;
-  let limit = 50;
+  let limit = 25;
+  let after = "";
+  let through = "";
   try {
-    const body = (await req.json()) as { resend?: unknown; limit?: unknown };
-    resend = !!body.resend;
-    if (typeof body.limit === "number") limit = Math.min(Math.max(1, body.limit), 500);
+    const body = (await req.json()) as { resend?: unknown; limit?: unknown; after?: unknown; through?: unknown };
+    resend = body.resend === true;
+    if (typeof body.after === "string") after = body.after;
+    if (typeof body.through === "string") through = body.through;
+    if (typeof body.limit === "number" && Number.isFinite(body.limit)) limit = Math.min(Math.max(1, Math.floor(body.limit)), 25);
   } catch { /* empty body is fine */ }
 
-  const filter = resend ? "" : `WHERE p.email_status IN ('pending', 'failed')`;
+  // Freeze the upper ID boundary for this run. IDs are immutable, so every
+  // batch advances even if some sends fail. Avoid concurrent imports while sending.
+  if (!through) through = (await DB.prepare("SELECT MAX(id) AS id FROM participants").first<{ id: string | null }>())?.id || "";
+  const filter = resend ? "" : "AND p.email_status IN ('pending', 'failed')";
   const { results } = await DB.prepare(
-    `${PARTICIPANT_SELECT} ${filter} ORDER BY p.created_at ASC LIMIT ?`
-  ).bind(limit).all<ParticipantWithPass>();
+    `${PARTICIPANT_SELECT} WHERE p.id > ? AND p.id <= ? ${filter} ORDER BY p.id ASC LIMIT ?`
+  ).bind(after, through, limit).all<ParticipantWithPass>();
 
-  const baseUrl = (env.APP_BASE_URL || new URL(req.url).origin).replace(/\/$/, "");
   const mode = (env.EMAIL_MODE || "mock").toLowerCase() === "ses" ? "ses" : "mock";
 
   let sent = 0;
@@ -33,7 +39,6 @@ export async function POST(req: NextRequest) {
       toName: p.name,
       passName: p.pass_name,
       token: p.token,
-      baseUrl,
     });
     if (r.ok) {
       sent++;
@@ -60,5 +65,7 @@ export async function POST(req: NextRequest) {
     failed,
     remainingUnsent: remaining?.n ?? 0,
     failures: failures.slice(0, 20),
+    through,
+    nextCursor: results.length === limit ? results[results.length - 1].id : null,
   });
 }

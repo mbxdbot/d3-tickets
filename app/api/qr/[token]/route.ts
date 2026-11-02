@@ -12,6 +12,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
   if (!p) return NextResponse.json({ error: "not found" }, { status: 404 });
   const png = await qrPng(encodePayload({ v: 1, t: p.token, p: p.pass_name, n: p.name }));
   return new NextResponse(png as unknown as BodyInit, {
-    headers: { "content-type": "image/png", "cache-control": "public, max-age=3600" },
+    headers: { "content-type": "image/png", "cache-control": "private, no-store" },
   });
 }

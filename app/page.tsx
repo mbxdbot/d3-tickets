@@ -11,7 +11,7 @@ export default async function Dashboard() {
   const { DB } = await getEnv();
   const totals = (await DB.prepare(
     `SELECT COUNT(*) AS total,
-            COALESCE(SUM(CASE WHEN email_status IN ('sent','mocked') THEN 1 ELSE 0 END),0) AS emailed,
+            COALESCE(SUM(CASE WHEN email_status = 'sent' THEN 1 ELSE 0 END),0) AS emailed,
             COALESCE(SUM(CASE WHEN email_status = 'failed' THEN 1 ELSE 0 END),0) AS email_failed,
             COALESCE(SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked_in
      FROM participants`
@@ -20,7 +20,7 @@ export default async function Dashboard() {
   const perPass = (await DB.prepare(
     `SELECT pt.id, pt.name, pt.color, COUNT(p.id) AS total,
             COALESCE(SUM(CASE WHEN p.checked_in_at IS NOT NULL THEN 1 ELSE 0 END),0) AS checked_in,
-            COALESCE(SUM(CASE WHEN p.email_status IN ('sent','mocked') THEN 1 ELSE 0 END),0) AS emailed
+            COALESCE(SUM(CASE WHEN p.email_status = 'sent' THEN 1 ELSE 0 END),0) AS emailed
      FROM pass_types pt LEFT JOIN participants p ON p.pass_type_id = pt.id
      GROUP BY pt.id ORDER BY pt.created_at ASC`
   ).all<PerPass>()).results;

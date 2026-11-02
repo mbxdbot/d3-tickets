@@ -25,24 +25,32 @@ export default function PassManager({ passes }: { passes: PassRow[] }) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/pass-types", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, description, color }),
-    });
-    const data = (await res.json()) as { error?: string };
-    setBusy(false);
-    if (!res.ok) { setError(data.error || "Failed to create pass."); return; }
-    setName(""); setDescription("");
-    router.refresh();
+    try {
+      const res = await fetch("/api/pass-types", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, description, color }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Failed to create pass.");
+      setName(""); setDescription("");
+      router.refresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Network error. Could not reach the server.");
+    } finally { setBusy(false); }
   }
 
   async function deletePass(id: string) {
     setError(null);
-    const res = await fetch(`/api/pass-types/${id}`, { method: "DELETE" });
-    const data = (await res.json()) as { error?: string };
-    if (!res.ok) { setError(data.error || "Failed to delete pass."); return; }
-    router.refresh();
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/pass-types/${id}`, { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Failed to delete pass.");
+      router.refresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Network error. Could not reach the server.");
+    } finally { setBusy(false); }
   }
 
   return (
@@ -64,6 +72,7 @@ export default function PassManager({ passes }: { passes: PassRow[] }) {
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-zinc-400 tabular-nums">{p.participant_count} participants</span>
                   <button
+                    disabled={busy}
                     onClick={() => deletePass(p.id)}
                     className="rounded-md px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50"
                   >

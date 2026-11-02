@@ -28,6 +28,8 @@ interface SendResult {
   sent: number;
   failed: number;
   remainingUnsent: number;
+  nextCursor?: string | null;
+  through?: string;
 }
 
 export default function ParticipantsClient({
@@ -43,6 +45,7 @@ export default function ParticipantsClient({
   const fileRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [sendResult, setSendResult] = useState<SendResult | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"import" | "send" | null>(null);
   const [filter, setFilter] = useState("");
   const [passFilter, setPassFilter] = useState("");
@@ -54,26 +57,55 @@ export default function ParticipantsClient({
     setImportResult(null);
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch("/api/participants/import", { method: "POST", body: form });
-    const data = (await res.json()) as ImportResult & { error?: string };
-    setBusy(null);
-    if (!res.ok) { setImportResult({ imported: 0, updated: 0, failed: -1, errors: [{ row: 0, message: data.error || "Import failed." }] }); return; }
-    setImportResult(data);
-    if (fileRef.current) fileRef.current.value = "";
-    router.refresh();
+    setActionError(null);
+    try {
+      const res = await fetch("/api/participants/import", { method: "POST", body: form });
+      const data = (await res.json().catch(() => { throw new Error("The server returned an unreadable response. Check the connection and try again."); })) as ImportResult & { error?: string };
+      if (!res.ok) {
+        if (typeof data.imported === "number") setImportResult(data);
+        throw new Error(data.error || "Import failed.");
+      }
+      setImportResult(data);
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Import failed. Check the connection.");
+    } finally {
+      setBusy(null);
+      router.refresh();
+    }
   }
 
   async function sendEmails(resend: boolean) {
     setBusy("send");
     setSendResult(null);
-    const res = await fetch("/api/send-emails", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ resend }),
-    });
-    setSendResult(await res.json());
-    setBusy(null);
-    router.refresh();
+    setActionError(null);
+    const total: SendResult = { mode: "", attempted: 0, sent: 0, failed: 0, remainingUnsent: 0 };
+    let after: string | null = "";
+    let through: string | undefined;
+    try {
+      do {
+        const res = await fetch("/api/send-emails", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ resend, after, through }),
+        });
+        const data = (await res.json().catch(() => { throw new Error("The server returned an unreadable response."); })) as SendResult & { error?: string };
+        if (!res.ok) throw new Error(data.error || "Send failed.");
+        total.mode = data.mode;
+        total.attempted += data.attempted;
+        total.sent += data.sent;
+        total.failed += data.failed;
+        total.remainingUnsent = data.remainingUnsent;
+        setSendResult({ ...total });
+        after = data.nextCursor || null;
+        through = data.through;
+      } while (after);
+    } catch (error) {
+      setActionError(`${error instanceof Error ? error.message : "Send failed."} Sending stopped. Some invitations may already have been processed; refresh before retrying.`);
+    } finally {
+      setBusy(null);
+      router.refresh();
+    }
   }
 
   const filtered = participants.filter((p) => {
@@ -100,7 +132,7 @@ export default function ParticipantsClient({
         </div>
         <div className="sm:border-l sm:border-zinc-200 sm:pl-3">
           <label className="mb-1 block text-xs font-medium text-zinc-500">
-            2. Email QR passes {emailMode === "ses" ? "(via Amazon SES)" : "(mock mode - logged, not sent)"}
+            2. Email QR passes {emailMode === "ses" ? "(via Amazon SES)" : "(mock mode - not sent)"}
           </label>
           <div className="flex items-center gap-2">
             <button
@@ -120,6 +152,8 @@ export default function ParticipantsClient({
           </div>
         </div>
       </div>
+
+      {actionError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{actionError}</div>}
 
       {importResult && (
         <div className={`rounded-xl border p-4 text-sm ${importResult.failed === 0 ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
